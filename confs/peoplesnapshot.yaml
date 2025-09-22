@@ -1,0 +1,45 @@
+defaults:
+  - _self_
+  - dataset: peoplesnapshot/male-3-casual
+  - deformer: smpl_model
+  
+hydra:
+  job:
+    chdir: true
+  run:
+    dir: "outputs/${dataset.name}"
+
+num_workers: 1
+max_sh_degree: 2
+max_freq: 4
+use_point_color: False
+use_point_displacement: False
+enable_ambient_occlusion: False
+lambda_dssim: 0.2
+
+# 新增：Gaussian Densify 参数配置
+eps_scale: 0.003                    # 降低分裂阈值，更容易触发
+use_scale_quantile: true            # 启用分位数触发
+quantile_threshold: 0.95             # 触发最大10%的高斯点
+T_split: 100                        # 缩短检查间隔，每100步检查一次
+perturbation_factor:  0.25           # 位置扰动因子
+max_points: 200000                   # 最大点数限制
+densify_freeze_iters: 300            # 前 200 次迭代冻结 densify
+
+training_args:
+  weights_lr: 0
+  joint_lr: 0.0005
+  opacity_lr: 0.05
+  scaling_lr: 0.001
+  rotation_lr: 0
+  ao_lr: 0.01
+  displacement_lr: 0.01
+  displacement_encoder_lr: 0.0001
+  shs_lr: 0.0025
+  sh_encoder_lr: 0.0005
+  
+
+trainer_args:
+  max_epochs: 15
+  check_val_every_n_epoch: 5
+  devices: [0]
