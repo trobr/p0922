@@ -2,6 +2,7 @@ from PIL import Image
 import torch
 import torch.nn as nn
 import hydra
+import time
 import numpy as np
 import pytorch_lightning as pl
 from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
@@ -68,6 +69,26 @@ class NeRFModel(pl.LightningModule):
             os.makedirs("val")
         if not os.path.exists("test"):
             os.makedirs("test")
+
+        self.epoch_start_time = None
+        self.epoch_times = []
+
+    def on_train_epoch_start(self):
+        self.epoch_start_time = time.perf_counter()
+    
+    def on_train_epoch_end(self):
+        elapsed = time.perf_counter() - self.epoch_start_time
+        self.epoch_times.append(elapsed)
+        # self.log("epoch_time_sec", elapsed, prog_bar=True)
+
+    def on_train_end(self, trainer, pl_module):
+        mean_epoch = np.mean(self.epoch_times)
+        std_epoch = np.std(self.epoch_times)
+
+        print("="*40)
+        print(f"Total training time: {sum(self.epoch_times):.2f} sec")
+        print(f"Epoch time mean ± std: {mean_epoch:.2f} ± {std_epoch:.2f} sec")
+        print("="*40)
 
     @torch.no_grad()
     def build_knn_idx(self, x_can: torch.Tensor, k: int):
