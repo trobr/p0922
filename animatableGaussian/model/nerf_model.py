@@ -6,6 +6,7 @@ import time
 import numpy as np
 import pytorch_lightning as pl
 from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
+from diff_gaussian_rasterization_tile import GaussianRasterizationSettings as GaussianRasterizationSettingsTile, GaussianRasterizer as GaussianRasterizerTile
 import os
 from torch.cuda.amp import custom_fwd
 from torchmetrics.image import PeakSignalNoiseRatio, StructuralSimilarityIndexMeasure
@@ -59,6 +60,7 @@ class NeRFModel(pl.LightningModule):
         self.lambda_isopos = getattr(opt, 'lambda_isopos', 0.0)  # 位置等距权重
         self.lambda_isocov = getattr(opt, 'lambda_isocov', 0.0)  # 协方差等距权重
         self.aiap_k = getattr(opt, 'aiap_k', 6)  # KNN邻居数
+        self.enable_tile = getattr(opt, 'enable_tile')
         
         # 新增: AIAP内存控制参数
         self.aiap_max_points = getattr(opt, 'aiap_max_points', 8000)  # 最大参与AIAP的点数
@@ -81,7 +83,7 @@ class NeRFModel(pl.LightningModule):
         self.epoch_times.append(elapsed)
         # self.log("epoch_time_sec", elapsed, prog_bar=True)
 
-    def on_train_end(self, trainer, pl_module):
+    def on_train_end(self):
         mean_epoch = np.mean(self.epoch_times)
         std_epoch = np.std(self.epoch_times)
 
@@ -271,12 +273,22 @@ class NeRFModel(pl.LightningModule):
             means2D.retain_grad()
         except:
             pass
-        raster_settings = GaussianRasterizationSettings(
-            sh_degree=self.sh_degree,
-            prefiltered=False,
-            debug=False, **camera_params
-        )
-        rasterizer = GaussianRasterizer(raster_settings=raster_settings)
+
+        if self.enable_tile:
+            raster_settings = GaussianRasterizationSettingsTile(
+                sh_degree=self.sh_degree,
+                prefiltered=False,
+                debug=False, **camera_params
+            )
+            rasterizer = GaussianRasterizerTile(raster_settings=raster_settings)
+        else:
+            raster_settings = GaussianRasterizationSettings(
+                sh_degree=self.sh_degree,
+                prefiltered=False,
+                debug=False, **camera_params
+            )
+            rasterizer = GaussianRasterizer(raster_settings=raster_settings)
+
         cov3D_precomp = None
         if render_point:
             colors_precomp = torch.rand_like(scales)
@@ -285,17 +297,33 @@ class NeRFModel(pl.LightningModule):
             shs = None
         else:
             colors_precomp = None
-        image, radii = rasterizer(
-            means3D=verts,
-            means2D=means2D,
-            shs=shs,
-            colors_precomp=colors_precomp,
-            opacities=opacity,
-            scales=scales,
-            rotations=rotations,
-            aos=aos,
-            transforms=transforms,
-            cov3D_precomp=cov3D_precomp)
+
+        if self.enable_tile:
+            score = torch.zeros_like(opacity)
+            image, radii, _ = rasterizer(
+                means3D=verts,
+                means2D=means2D,
+                shs=shs,
+                colors_precomp=colors_precomp,
+                opacities=opacity,
+                scales=scales,
+                scores=score,
+                rotations=rotations,
+                # aos=aos,
+                # transforms=transforms,
+                cov3D_precomp=cov3D_precomp)
+        else:
+            image, radii = rasterizer(
+                means3D=verts,
+                means2D=means2D,
+                shs=shs,
+                colors_precomp=colors_precomp,
+                opacities=opacity,
+                scales=scales,
+                rotations=rotations,
+                aos=aos,
+                transforms=transforms,
+                cov3D_precomp=cov3D_precomp)
         
         if return_aux_info:
             return image, aux_info
