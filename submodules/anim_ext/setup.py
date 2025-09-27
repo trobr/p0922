@@ -26,7 +26,23 @@ setup(
                     '-lineinfo',
                 ]
             }
-        )
+        ),
+        CUDAExtension(
+            name='lbs_cuda',
+            sources=[
+                "lbs_cuda.cpp",
+                "lbs.cu",
+            ],
+            extra_compile_args={
+                'cxx': ['-O2'],
+                'nvcc': [
+                    '-O2',
+                    '--use_fast_math',
+                    '-maxrregcount=64',
+                    '-lineinfo',
+                ]
+            }
+        ),
     ],
     cmdclass={'build_ext': BuildExtension.with_options(use_ninja=True),}
 )

@@ -191,7 +191,8 @@ class deform_network(nn.Module):
         # 适度约束 log-scales 范围，避免数值爆炸（可按需要调整上下界）
         # scales = torch.clamp(scales, min=math.log(1e-6), max=math.log(1.0))
         
-        # === 修复四元数处理路径（不使用增益系数）===
+        # # === 修复四元数处理路径（不使用增益系数）===
+        # TODO(keye)： 这里一定要优化，非常影响反向传播效率，反向传播第二阶段低利用率这里占了很大一部分
         delta_rot = offset[..., 6:]
         q1 = delta_rot.clone()
         q1[:, 0] = 1.0  # w分量设为1
