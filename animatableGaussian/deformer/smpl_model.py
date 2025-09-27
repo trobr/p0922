@@ -282,9 +282,9 @@ class SMPLModel(nn.Module):
             rotations_out = torch.nn.functional.normalize(self.rotations)
 
         torch.cuda.nvtx.range_push("smpl_lbs")
-        # T = lbs(full_body_pose, transl, self.J, self.parents, self.weights)
-        # for debug
-        T = torch.randn(1, points.shape[0], 4, 4, device=points.device)
+        T = lbs(full_body_pose, transl, self.J, self.parents, self.weights)
+        # # for debug
+        # T = torch.randn(1, points.shape[0], 4, 4, device=points.device)
         torch.cuda.nvtx.range_pop()  # smpl_lbs
 
 

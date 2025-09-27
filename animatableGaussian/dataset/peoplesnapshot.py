@@ -251,14 +251,14 @@ class PeopleSnapshotDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         if hasattr(self, "trainset"):
-            # for debug
-            return DataLoader(self.trainset,
-                              shuffle=True,
-                              pin_memory=True,
-                              batch_size=1,
-                              persistent_workers=False,
-                              num_workers=0,
-                              collate_fn=my_collate_fn)
+            # # for debug
+            # return DataLoader(self.trainset,
+            #                   shuffle=True,
+            #                   pin_memory=True,
+            #                   batch_size=1,
+            #                   persistent_workers=False,
+            #                   num_workers=0,
+            #                   collate_fn=my_collate_fn)
             loader = DataLoader(self.trainset,
                               shuffle=True,
                               pin_memory=True,
@@ -273,13 +273,14 @@ class PeopleSnapshotDataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         if hasattr(self, "valset"):
-            return DataLoader(self.valset,
-                              shuffle=False,
-                              pin_memory=True,
-                              batch_size=1,
-                              persistent_workers=False,
-                              num_workers=0,
-                              collate_fn=my_collate_fn)
+            # # for debug
+            # return DataLoader(self.valset,
+            #                   shuffle=False,
+            #                   pin_memory=True,
+            #                   batch_size=1,
+            #                   persistent_workers=False,
+            #                   num_workers=0,
+            #                   collate_fn=my_collate_fn)
             return DataLoader(self.valset,
                               shuffle=False,
                               pin_memory=True,

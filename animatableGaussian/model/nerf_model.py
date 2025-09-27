@@ -377,9 +377,9 @@ class NeRFModel(pl.LightningModule):
 
         # 新增: 获取渲染图像和辅助信息
         nvtx.range_push("forward")
-        # image, aux_info = self(camera_params, model_param, batch["time"], iteration, total_iteration, return_aux_info=True)
+        image, aux_info = self(camera_params, model_param, batch["time"], iteration, total_iteration, return_aux_info=True)
         # for debug
-        image, aux_info = self(camera_params, model_param, batch["time"], iteration, total_iteration, return_aux_info=False)
+        # image, aux_info = self(camera_params, model_param, batch["time"], iteration, total_iteration, return_aux_info=False)
         gt_image = batch["gt"]
         nvtx.range_pop()
 

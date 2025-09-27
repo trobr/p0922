@@ -168,8 +168,8 @@ class deform_network(nn.Module):
         # 位置编码
 
         torch.cuda.nvtx.range_push("deform_posenc")
-        # pos_emb0 = get_embedder(iteration, multires=6, kick_in_iter=0.1 * total_iteration, full_band_iter=total_iteration)[0](point)
-        pos_emb0 = self.embedder_module(point, iteration)
+        pos_emb0 = get_embedder(iteration, multires=6, kick_in_iter=0.1 * total_iteration, full_band_iter=total_iteration)[0](point)
+        # pos_emb0 = self.embedder_module(point, iteration)
         #point_emb = torch.cat([pose.unsqueeze(0).repeat(point.shape[0], 1), pos_emb0], dim=-1)
         torch.cuda.nvtx.range_pop()  # deform_posenc
 
