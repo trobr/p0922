@@ -25,7 +25,7 @@ T_split: 100                        # 缩短检查间隔，每100步检查一次
 perturbation_factor:  0.25           # 位置扰动因子
 max_points: 200000                   # 最大点数限制
 densify_freeze_iters: 2000            # 前 200 次迭代冻结 densify
-enable_tile: true
+enable_tile: false
 
 training_args:
   weights_lr: 0

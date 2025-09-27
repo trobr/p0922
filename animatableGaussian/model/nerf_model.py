@@ -17,6 +17,8 @@ import inspect
 import torch.nn.functional as F
 # 顶部：新增导入
 from animatableGaussian.gaussian_density import GaussianDensityController
+from animatableGaussian.deformer.deformation import deform_network  # 新增导入
+
 
 
 class Evaluator(nn.Module):
@@ -75,6 +77,7 @@ class NeRFModel(pl.LightningModule):
         self.epoch_start_time = None
         self.epoch_times = []
 
+
     def on_train_epoch_start(self):
         self.epoch_start_time = time.perf_counter()
     
@@ -82,6 +85,10 @@ class NeRFModel(pl.LightningModule):
         elapsed = time.perf_counter() - self.epoch_start_time
         self.epoch_times.append(elapsed)
         # self.log("epoch_time_sec", elapsed, prog_bar=True)
+    
+    def on_fit_start(self):
+        import pdb; pdb.set_trace()
+        self.model.deform_network.set_total_iteration(self._get_total_training_steps())
 
     def on_train_end(self):
         mean_epoch = np.mean(self.epoch_times)
@@ -205,15 +212,7 @@ class NeRFModel(pl.LightningModule):
     def forward(self, camera_params, model_param, time, iteration, total_iteration, render_point=False, train=True, return_aux_info=False):
         is_use_ao = (not train) or self.current_epoch > 3
 
-        # 根据被实例化的deformer.forward签名，决定是否传入iteration/total_iteration
-        # TODO(keye): 这里移到init里做一次性检查
-        # TODO(keye)： model直接增加**kwargs参数吸收多余参数，iteration，total_iteration都直接传入
-        model_forward_sig = inspect.signature(self.model.forward)
-        model_kwargs = dict(time=time, is_use_ao=is_use_ao, **model_param)
-        if "iteration" in model_forward_sig.parameters:
-            model_kwargs["iteration"] = iteration
-        if "total_iteration" in model_forward_sig.parameters:
-            model_kwargs["total_iteration"] = total_iteration
+        model_kwargs = dict(time=time, is_use_ao=is_use_ao, iteration=iteration, total_iteration=total_iteration, **model_param)
 
         verts, opacity, scales, rotations, shs, aos, transforms = self.model(**model_kwargs)
         
@@ -299,7 +298,7 @@ class NeRFModel(pl.LightningModule):
             colors_precomp = None
 
         if self.enable_tile:
-            score = torch.zeros_like(opacity)
+            scores = torch.empty(0)
             image, radii, _ = rasterizer(
                 means3D=verts,
                 means2D=means2D,
@@ -307,7 +306,7 @@ class NeRFModel(pl.LightningModule):
                 colors_precomp=colors_precomp,
                 opacities=opacity,
                 scales=scales,
-                scores=score,
+                scores=scores,
                 rotations=rotations,
                 # aos=aos,
                 # transforms=transforms,
