@@ -81,7 +81,7 @@ class NeRFModel(pl.LightningModule):
         self.epoch_times.append(elapsed)
         # self.log("epoch_time_sec", elapsed, prog_bar=True)
 
-    def on_train_end(self, trainer, pl_module):
+    def on_train_end(self):
         mean_epoch = np.mean(self.epoch_times)
         std_epoch = np.std(self.epoch_times)
 
