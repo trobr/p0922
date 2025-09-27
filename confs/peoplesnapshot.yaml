@@ -24,7 +24,7 @@ quantile_threshold: 0.95             # 触发最大10%的高斯点
 T_split: 100                        # 缩短检查间隔，每100步检查一次
 perturbation_factor:  0.25           # 位置扰动因子
 max_points: 200000                   # 最大点数限制
-densify_freeze_iters: 300            # 前 200 次迭代冻结 densify
+densify_freeze_iters: 2000            # 前 200 次迭代冻结 densify
 
 training_args:
   weights_lr: 0
