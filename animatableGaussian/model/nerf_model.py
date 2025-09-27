@@ -207,17 +207,13 @@ class NeRFModel(pl.LightningModule):
             return torch.tensor(0.0, device=device, requires_grad=True)
 
     def forward(self, camera_params, model_param, time, iteration, total_iteration, render_point=False, train=True, return_aux_info=False):
+        # torch.cuda.nvtx.range_push("f-pre")
         is_use_ao = (not train) or self.current_epoch > 3
+        # torch.cuda.nvtx.range_pop()
 
         # 根据被实例化的deformer.forward签名，决定是否传入iteration/total_iteration
-        # TODO(keye): 这里移到init里做一次性检查
-        # TODO(keye)： model直接增加**kwargs参数吸收多余参数，iteration，total_iteration都直接传入
-        model_forward_sig = inspect.signature(self.model.forward)
-        model_kwargs = dict(time=time, is_use_ao=is_use_ao, **model_param)
-        if "iteration" in model_forward_sig.parameters:
-            model_kwargs["iteration"] = iteration
-        if "total_iteration" in model_forward_sig.parameters:
-            model_kwargs["total_iteration"] = total_iteration
+        
+        model_kwargs = dict(time=time, is_use_ao=is_use_ao, iteration=iteration, total_iteration=total_iteration, **model_param)
 
         verts, opacity, scales, rotations, shs, aos, transforms = self.model(**model_kwargs)
         

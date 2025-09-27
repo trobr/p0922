@@ -244,7 +244,7 @@ class GalaModel(nn.Module):
                       'lr': training_args.sh_encoder_lr, "name": "shEncoder"})
         return torch.optim.Adam(l, lr=0.0, eps=1e-15)
 
-    def forward(self, body_pose, global_orient, transl, time, is_use_ao):
+    def forward(self, body_pose, global_orient, transl, time, is_use_ao, **kwargs):
         """
         Caculate the transforms of vertices.
 
