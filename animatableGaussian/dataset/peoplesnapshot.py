@@ -155,6 +155,14 @@ class PeopleSnapshotDataset(torch.utils.data.Dataset):
         
         # 用于时序一致性
         self.previous_rendered = None
+        self.build_time_encoding()
+    
+    def build_time_encoding(self):
+        time_encodings = {}
+        for i in range(len(self)):
+            t = i / len(self)
+            time_encodings[t] = time_encoding(t, self.imgs[i].dtype, self.max_freq)
+        self.time_encodings = time_encodings
 
     def __len__(self):
         return len(self.imgs)
@@ -181,6 +189,7 @@ class PeopleSnapshotDataset(torch.utils.data.Dataset):
                 "model_param": vars(smpl_param),
                 "gt": self.imgs[index],
                 "mask": self.masks[index],  # 新增mask
+                # "time":  self.time_encodings[t],
                 "time":  time_encoding(t, self.imgs[index].dtype, self.max_freq),
                 "index": index}  # 新增index用于时序一致性
         return data

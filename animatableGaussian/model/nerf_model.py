@@ -87,8 +87,10 @@ class NeRFModel(pl.LightningModule):
         # self.log("epoch_time_sec", elapsed, prog_bar=True)
     
     def on_fit_start(self):
-        import pdb; pdb.set_trace()
         self.model.deform_network.set_total_iteration(self._get_total_training_steps())
+    
+    def on_test_start(self):
+        self.model.deform_network.set_total_iteration(1000)
 
     def on_train_end(self):
         mean_epoch = np.mean(self.epoch_times)
