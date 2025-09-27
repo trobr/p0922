@@ -11,6 +11,8 @@ import torch.nn.functional as F
 import torch.nn.init as init
 
 from submodules.anim_ext.embedder import EmbedderModule
+import posenc_cuda
+
 
 # from scene.grid import HashHexPlane
 
@@ -135,7 +137,10 @@ class deform_network(nn.Module):
     #     self.deformation_net.load_state_dict(torch.load(weights_path))
 
     def forward(self, point, scales=None, rotations=None,pose=None,iteration=None,total_iteration=None):
-        return self.forward_dynamic(point, scales, rotations,pose,iteration,total_iteration)
+        torch.cuda.nvtx.range_push("deform_forward")
+        res = self.forward_dynamic(point, scales, rotations,pose,iteration,total_iteration)
+        torch.cuda.nvtx.range_pop()
+        return res
 
     @property
     def get_aabb(self):
@@ -162,10 +167,11 @@ class deform_network(nn.Module):
         # point_emb = nerf_positional_encoding(point_emb0)
         # 位置编码
 
-        # TODO(keye): 这里get_embedder链路可以要优化，不要每次都重新创建
-        # pos_emb0 = get_embedder(iteration, multires=6, kick_in_iter=0.1 * total_iteration, full_band_iter=total_iteration)[0](point)
-        pos_emb0 = self.embedder_module(point, iteration)
+        torch.cuda.nvtx.range_push("deform_posenc")
+        pos_emb0 = get_embedder(iteration, multires=6, kick_in_iter=0.1 * total_iteration, full_band_iter=total_iteration)[0](point)
+        # pos_emb0 = self.embedder_module(point, iteration)
         #point_emb = torch.cat([pose.unsqueeze(0).repeat(point.shape[0], 1), pos_emb0], dim=-1)
+        torch.cuda.nvtx.range_pop()  # deform_posenc
 
         # 拼接姿态
         if pose.shape[0] == 1:
@@ -204,7 +210,7 @@ class deform_network(nn.Module):
         
         # 最终归一化输出四元数
         rotations = F.normalize(q_result, p=2, dim=1)
-        
+
         return means3D, scales, rotations, offset
 
     def get_mlp_parameters(self):

@@ -4,3 +4,4 @@ build/
 outputs
 data/
 *.egg-info/
+/*.nsys-rep

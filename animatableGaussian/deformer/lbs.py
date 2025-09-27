@@ -55,9 +55,9 @@ def lbs(
     '''
     device = pose.device
     batch_size = pose.shape[0]
-    pose = pose.cpu()
-    translate = translate.cpu()
-    J = J.cpu()
+    # pose = pose.cpu()
+    # translate = translate.cpu()
+    # J = J.cpu()
 
     rot_mats = batch_rodrigues(pose.view(-1, 3)).view(
         [batch_size, -1, 3, 3])

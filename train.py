@@ -1,6 +1,7 @@
 from animatableGaussian.model.nerf_model import NeRFModel
 import hydra
 import pytorch_lightning as pl
+import torch
 
 
 # @hydra.main(config_path="./confs", config_name="gala", version_base="1.1")
@@ -13,7 +14,11 @@ def main(opt):
     trainer = pl.Trainer(accelerator='gpu',
                          **opt.trainer_args)
 
+    # with torch.autograd.profiler.profile(use_cuda=True) as prof:
+    #     trainer.fit(model, datamodule=datamodule)
+    # prof.export_chrome_trace("/root/trobr/code/p0922/trace.json")
     trainer.fit(model, datamodule=datamodule)
+
     trainer.save_checkpoint('model.ckpt')
 
 

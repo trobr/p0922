@@ -18,6 +18,8 @@ at::Tensor posenc_backward_cuda(
     const float full_band_iter
 );
 
+void ext_mark_cuda();
+
 // Python bindings
 at::Tensor forward_wrapper(
     const at::Tensor& inputs,
@@ -46,4 +48,5 @@ at::Tensor backward_wrapper(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("forward", &forward_wrapper, "PosEnc forward (CUDA)");
     m.def("backward", &backward_wrapper, "PosEnc backward (CUDA)");
+    m.def("ext_mark_cuda", &ext_mark_cuda, "Mark CUDA extension");
 }

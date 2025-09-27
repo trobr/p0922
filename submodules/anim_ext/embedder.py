@@ -21,7 +21,6 @@ class PosEncFunction(Function):
     @staticmethod
     def backward(ctx, grad_output):
         inputs, = ctx.saved_tensors
-        grad_output = grad_output.contiguous()
         grad_inputs = posenc_cuda.backward(grad_output, inputs,
                                            float(ctx.iteration),
                                            float(ctx.kick_in_iter),

@@ -199,6 +199,42 @@ def my_collate_fn(batch):
     return batch[0]
 
 
+class PrefetchLoader:
+    def __init__(self, loader, device):
+        self.loader = loader
+        self.device = device
+    
+    def move_to_device(self, batch, device, non_blocking=True):
+        if torch.is_tensor(batch):
+            return batch.to(device, non_blocking=non_blocking)
+        elif isinstance(batch, dict):
+            return {k: self.move_to_device(v, device, non_blocking) for k, v in batch.items()}
+        elif isinstance(batch, (list, tuple)):
+            return type(batch)(self.move_to_device(v, device, non_blocking) for v in batch)
+        else:
+            return batch
+
+    def __iter__(self):
+        stream = torch.cuda.Stream()
+        first = True
+        for next_batch in self.loader:
+            if first:
+                with torch.cuda.stream(stream):
+                    next_batch = self.move_to_device(next_batch, self.device, non_blocking=True)
+                if not first:
+                    torch.cuda.current_stream().wait_stream(stream)
+                    yield batch
+                else:
+                    first = False
+            else:
+                yield batch
+            batch = next_batch
+        yield batch
+
+    def __len__(self):
+        return len(self.loader)
+
+
 class PeopleSnapshotDataModule(pl.LightningDataModule):
     def __init__(self, num_workers, opt, train=True, **kwargs):
         super().__init__()
@@ -215,18 +251,35 @@ class PeopleSnapshotDataModule(pl.LightningDataModule):
 
     def train_dataloader(self):
         if hasattr(self, "trainset"):
+            # for debug
             return DataLoader(self.trainset,
+                              shuffle=True,
+                              pin_memory=True,
+                              batch_size=1,
+                              persistent_workers=False,
+                              num_workers=0,
+                              collate_fn=my_collate_fn)
+            loader = DataLoader(self.trainset,
                               shuffle=True,
                               pin_memory=True,
                               batch_size=1,
                               persistent_workers=True,
                               num_workers=self.num_workers,
                               collate_fn=my_collate_fn)
+            return loader
+            return PrefetchLoader(loader, "cuda")
         else:
             return super().train_dataloader()
 
     def val_dataloader(self):
         if hasattr(self, "valset"):
+            return DataLoader(self.valset,
+                              shuffle=False,
+                              pin_memory=True,
+                              batch_size=1,
+                              persistent_workers=False,
+                              num_workers=0,
+                              collate_fn=my_collate_fn)
             return DataLoader(self.valset,
                               shuffle=False,
                               pin_memory=True,

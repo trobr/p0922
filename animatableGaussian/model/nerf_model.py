@@ -18,7 +18,7 @@ import torch.nn.functional as F
 # 顶部：新增导入
 from animatableGaussian.gaussian_density import GaussianDensityController
 from animatableGaussian.deformer.deformation import deform_network  # 新增导入
-
+import torch.cuda.nvtx as nvtx
 
 
 class Evaluator(nn.Module):
@@ -45,6 +45,7 @@ class NeRFModel(pl.LightningModule):
         super(NeRFModel, self).__init__()
         self.save_hyperparameters()
         self.model = hydra.utils.instantiate(opt.deformer)
+        # self.model = torch.compile(self.model, mode="reduce-overhead") 
         self.training_args = opt.training_args
         self.sh_degree = opt.max_sh_degree
         self.lambda_dssim = opt.lambda_dssim
@@ -76,6 +77,9 @@ class NeRFModel(pl.LightningModule):
 
         self.epoch_start_time = None
         self.epoch_times = []
+
+        self.step_start = 0
+        self.step_finish = 0
 
 
     def on_train_epoch_start(self):
@@ -212,13 +216,18 @@ class NeRFModel(pl.LightningModule):
             return torch.tensor(0.0, device=device, requires_grad=True)
 
     def forward(self, camera_params, model_param, time, iteration, total_iteration, render_point=False, train=True, return_aux_info=False):
+        nvtx.range_push("f-pre")
         is_use_ao = (not train) or self.current_epoch > 3
+        nvtx.range_pop()
 
+        nvtx.range_push("f-forward")
         model_kwargs = dict(time=time, is_use_ao=is_use_ao, iteration=iteration, total_iteration=total_iteration, **model_param)
 
         verts, opacity, scales, rotations, shs, aos, transforms = self.model(**model_kwargs)
+        nvtx.range_pop()
         
         # 新增: 如果需要辅助信息（用于AIAP损失计算），则获取canonical数据
+        nvtx.range_push("f-aux")
         aux_info = {}
         if return_aux_info and train and hasattr(self.model, 'v_template'):
             # 获取canonical顶点和尺度
@@ -267,7 +276,9 @@ class NeRFModel(pl.LightningModule):
                 'canonical_cov': canonical_cov,
                 'deformed_cov': deformed_cov
             }
+        nvtx.range_pop()
 
+        nvtx.range_push("f-render")
         means2D = torch.zeros_like(
             verts, dtype=verts.dtype, requires_grad=True, device=verts.device)
         try:
@@ -326,9 +337,10 @@ class NeRFModel(pl.LightningModule):
                 transforms=transforms,
                 cov3D_precomp=cov3D_precomp)
         
+        nvtx.range_pop()
         if return_aux_info:
             return image, aux_info
-        return image
+        return image, None
 
     def _get_total_training_steps(self):
         # 优先使用 max_steps（若设置且有效）
@@ -350,21 +362,36 @@ class NeRFModel(pl.LightningModule):
         return 1
 
     def training_step(self, batch, batch_idx):
+        # torch.cuda.synchronize()
+        # now = time.perf_counter()
+        # print("data time: ", now - self.step_finish)
+        # self.step_start = now
+
+        nvtx.range_push("training_step")
+        nvtx.range_push("pre")
         camera_params = batch["camera_params"]
         model_param = batch["model_param"]
         iteration = int(self.global_step)
         total_iteration = self._get_total_training_steps()
-        
+        nvtx.range_pop()
+
         # 新增: 获取渲染图像和辅助信息
-        image, aux_info = self(camera_params, model_param, batch["time"], iteration, total_iteration, return_aux_info=True)
+        nvtx.range_push("forward")
+        # image, aux_info = self(camera_params, model_param, batch["time"], iteration, total_iteration, return_aux_info=True)
+        # for debug
+        image, aux_info = self(camera_params, model_param, batch["time"], iteration, total_iteration, return_aux_info=False)
         gt_image = batch["gt"]
-        
+        nvtx.range_pop()
+
         # 基础损失
+        nvtx.range_push("l1 loss")
         Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - self.lambda_dssim) * Ll1 + \
             self.lambda_dssim * (1.0 - ssim(image, gt_image))
-        
+        nvtx.range_pop()
+
         # 新增: AIAP损失计算
+        nvtx.range_push("aiap loss")
         if aux_info and self.lambda_isopos > 0 or self.lambda_isocov > 0:
             try:
                 # 位置等距损失 L_isopos
@@ -391,8 +418,16 @@ class NeRFModel(pl.LightningModule):
                 print(f"Warning: AIAP loss computation failed: {e}")
                 # 如果AIAP计算失败，继续训练但不添加该损失项
                 pass
-        
+        nvtx.range_pop()
+
         self.log('train_loss', loss, prog_bar=True)
+        nvtx.range_pop()
+
+        # for debug
+        # torch.cuda.synchronize()
+        # now = time.perf_counter()
+        # print("step time: ", now - self.step_start)
+        # self.step_finish = now
         return loss
 
     @torch.no_grad()
@@ -401,7 +436,7 @@ class NeRFModel(pl.LightningModule):
         model_param = batch["model_param"]
         iteration = int(self.global_step)
         total_iteration = self._get_total_training_steps()
-        rgb = self(camera_params, model_param, batch["time"], iteration, total_iteration)
+        rgb, _ = self(camera_params, model_param, batch["time"], iteration, total_iteration)
         rgb_gt = batch["gt"]
         image = torch.cat((rgb, rgb_gt), dim=2)
         img = (255. * image.permute(1, 2, 0)
@@ -416,7 +451,7 @@ class NeRFModel(pl.LightningModule):
         # 直接设定一个足够大的总迭代，避免访问训练数据
         total_iteration = 1000
         iteration = total_iteration
-        rgb = self(camera_params, model_param, batch["time"], iteration, total_iteration, train=False)
+        rgb, _ = self(camera_params, model_param, batch["time"], iteration, total_iteration, train=False)
         rgb_gt = batch["gt"]
         losses = {
             # add some extra loss here

@@ -16,6 +16,15 @@ inline int GET_BLOCKS(const int N, const int BSIZE) {
     return (N + BSIZE - 1) / BSIZE;
 }
 
+__global__ void ext_mark_kernel() {
+    asm("");
+}
+
+void ext_mark_cuda() {
+    const int threads = 1;
+    const int blocks = 1;
+    ext_mark_kernel<<<blocks, threads>>>();
+}
 
 // forward kernel
 // inputs: (B, D)
@@ -25,7 +34,7 @@ __global__ void posenc_forward_kernel(
     const scalar_t* __restrict__ inputs,
     scalar_t* __restrict__ outputs,
     const int B,
-    const float* __restrict__ w_per_freq // NUM_FREQS
+    const float alpha
 ) {
     constexpr int OUT_DIM = (INCLUDE_INPUT ? D : 0) + NUM_FREQS * 2 * D;
 
@@ -49,7 +58,8 @@ __global__ void posenc_forward_kernel(
 #pragma unroll NUM_FREQS
     for (int f = 0; f < NUM_FREQS; ++f) {
         scalar_t freq = scalar_t(1 << f); // 2^f
-        scalar_t w = scalar_t(w_per_freq[f]);
+        float diff = fminf(fmaxf(alpha - (float)f, 0.f), 1.f);
+        scalar_t w = (1.0f - cosf(3.14159265358979323846f * diff)) / 2.0f;
         Point out1, out2;
 
 #pragma unroll D
@@ -77,7 +87,7 @@ __global__ void posenc_backward_kernel(
     const scalar_t* __restrict__ inputs,
     scalar_t* __restrict__ grad_inputs,
     const int B,
-    const float* __restrict__ w_per_freq
+    const float alpha
 ) {
     constexpr int out_dim = (INCLUDE_INPUT ? D : 0) + NUM_FREQS * 2 * D;
 
@@ -98,7 +108,8 @@ __global__ void posenc_backward_kernel(
 #pragma unroll NUM_FREQS
     for (int f = 0; f < NUM_FREQS; ++f) {
         scalar_t freq = scalar_t(1 << f);
-        scalar_t w = scalar_t(w_per_freq[f]);
+        float diff = fminf(fmaxf(alpha - (float)f, 0.f), 1.f);
+        scalar_t w = (1.0f - cosf(3.14159265358979323846f * diff)) / 2.0f;
 #pragma unroll D
         for (int d = 0; d < D; ++d) {
             scalar_t x = inputs[b * D + d];
@@ -150,16 +161,6 @@ at::Tensor posenc_forward_cuda(
     float m = (float)NUM_FREQS;
     float alpha = m * t / N;
 
-    std::vector<float> w_h(NUM_FREQS);
-    for (int i = 0; i < NUM_FREQS; ++i) {
-        float diff = std::min(std::max(alpha - (float)i, 0.f), 1.f);
-        w_h[i] = (1.0f - cosf(3.14159265358979323846f * diff)) / 2.0f;
-    }
-
-    // prepare device tensors
-    at::Tensor w_per_freq = at::empty({NUM_FREQS}, inputs.options().dtype(at::kFloat));
-    cudaMemcpy(w_per_freq.data_ptr<float>(), w_h.data(), NUM_FREQS * sizeof(float), cudaMemcpyHostToDevice);
-
     constexpr int out_dim = (INCLUDE_INPUT ? D : 0) + NUM_FREQS * 2 * D;
     auto outputs = at::empty({B, out_dim}, inputs.options()).to(inputs.device());
 
@@ -169,14 +170,13 @@ at::Tensor posenc_forward_cuda(
 
     TORCH_CHECK(inputs.is_cuda(), "inputs must be a CUDA tensor");
     TORCH_CHECK(outputs.is_cuda(), "outputs must be a CUDA tensor");
-    TORCH_CHECK(w_per_freq.is_cuda(), "w_per_freq must be a CUDA tensor");
 
     AT_DISPATCH_FLOATING_TYPES(inputs.scalar_type(), "posenc_forward_cuda", ([&] {
         posenc_forward_kernel<scalar_t, D, INCLUDE_INPUT, NUM_FREQS><<<blocks, threads>>>(
             inputs.data_ptr<scalar_t>(),
             outputs.data_ptr<scalar_t>(),
             B, 
-            w_per_freq.data_ptr<float>()
+            alpha
         );
     }));
 
@@ -212,31 +212,13 @@ at::Tensor posenc_backward_cuda(
     constexpr bool INCLUDE_INPUT = false;
     constexpr int D = 3;
 
-    // Recompute freq_bands and w_per_freq on host (same as forward) - cheap
-    std::vector<float> freq_bands_h(NUM_FREQS);
-    for (int i = 0; i < NUM_FREQS; ++i) {
-        freq_bands_h[i] = powf(2.0f, i);
-    }
     float t = iteration - kick_in_iter;
     if (t < 0.f) t = 0.f;
     float N = full_band_iter - kick_in_iter;
     if (N < 1e-6f) N = 1e-6f;
     float m = (float)NUM_FREQS;
     float alpha = m * t / N;
-    std::vector<float> w_h(NUM_FREQS);
-    for (int i = 0; i < NUM_FREQS; ++i) {
-        float diff = alpha - (float)i;
-        if (diff < 0.f) diff = 0.f;
-        if (diff > 1.f) diff = 1.f;
-        w_h[i] = (1.0f - cosf(3.14159265358979323846f * diff)) / 2.0f;
-    }
-
-    auto options = inputs.options().dtype(at::kFloat);
-    at::Tensor freq_bands = at::empty({NUM_FREQS}, options);
-    at::Tensor w_per_freq = at::empty({NUM_FREQS}, options);
-    // copy from host to device
-    cudaMemcpy(freq_bands.data_ptr<float>(), freq_bands_h.data(), NUM_FREQS * sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(w_per_freq.data_ptr<float>(), w_h.data(), NUM_FREQS * sizeof(float), cudaMemcpyHostToDevice);
+    ext_mark_cuda();
 
     constexpr int out_dim = (INCLUDE_INPUT ? D : 0) + NUM_FREQS * 2 * D;
     if (!(grad_out.size(0) == B && grad_out.size(1) == out_dim)) {
@@ -244,9 +226,10 @@ at::Tensor posenc_backward_cuda(
     }
 
     auto grad_inputs = at::zeros_like(inputs);
+    ext_mark_cuda();
 
     const int threads = 256;
-    const int blocks = GET_BLOCKS(B * D, threads);
+    const int blocks = GET_BLOCKS(B, threads);
 
     AT_DISPATCH_FLOATING_TYPES(inputs.scalar_type(), "posenc_backward_cuda", ([&] {
         posenc_backward_kernel<scalar_t, 3, false, 6><<<blocks, threads>>>(
@@ -254,7 +237,7 @@ at::Tensor posenc_backward_cuda(
             inputs.data_ptr<scalar_t>(),
             grad_inputs.data_ptr<scalar_t>(),
             B,
-            w_per_freq.data_ptr<float>()
+            alpha
         );
     }));
 
