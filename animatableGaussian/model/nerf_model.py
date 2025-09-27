@@ -72,6 +72,12 @@ class NeRFModel(pl.LightningModule):
 
         self.epoch_start_time = None
         self.epoch_times = []
+    
+    def on_fit_start(self):
+        self.model.deform_network.set_total_iteration(self._get_total_training_steps())
+    
+    def on_test_start(self):
+        self.model.deform_network.set_total_iteration(1000)
 
     def on_train_epoch_start(self):
         self.epoch_start_time = time.perf_counter()
