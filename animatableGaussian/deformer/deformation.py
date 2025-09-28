@@ -170,7 +170,15 @@ class deform_network(nn.Module):
         self.rotation_scaling_poc = self.rotation_scaling_poc.to(device)
         self.opacity_poc = self.opacity_poc.to(device)
         self.apply(initialize_weights)
-        self.shs_deform = SHSDeformNet()
+        # self.shs_deform = SHSDeformNet()
+
+        self.shs_deform = torch.compile(SHSDeformNet().to(device))
+        
+        dummy_x = torch.randn(137800, 108, device=device)
+        dummy_skip = torch.randn(137800, 36, device=device)
+        with torch.no_grad():
+            for _ in range(100):
+                self.shs_deform(dummy_x, dummy_skip)  # 触发编译
         # print(self)
 
     # def save_deform_weights(self, model_path, iteration):
