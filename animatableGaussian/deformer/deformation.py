@@ -68,6 +68,81 @@ def apply_rotation(q1, q2):
 
     return q3_normalized
 
+class ResBlock(nn.Module):
+    def __init__(self, dim, dropout=0.1):
+        super().__init__()
+        self.fc1 = nn.Linear(dim, dim)
+        self.fc2 = nn.Linear(dim, dim)
+        self.act = nn.GELU()
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x):
+        h = self.drop(self.act(self.fc1(x)))
+        h = self.drop(self.fc2(h))
+        return self.act(x + h)  # 残差连接
+
+class GatedSkip(nn.Module):
+    def __init__(self, in_dim, skip_dim, hidden_dim):
+        super().__init__()
+        self.fc = nn.Linear(in_dim, hidden_dim)
+        self.gate = nn.Linear(skip_dim, hidden_dim)
+
+    def forward(self, x, skip_emb):
+        return self.fc(x) + torch.sigmoid(self.gate(skip_emb)) * x
+
+# class SHSDeformNet(nn.Module):
+#     def __init__(self, input_dim=108, skip_dim=36, hidden_dim=160, out_dim=10, dropout=0.1):
+#         super().__init__()
+#         self.act = nn.GELU()
+#         self.fc_in = nn.Linear(input_dim, hidden_dim)
+
+#         # 两个残差块
+#         self.res1 = ResBlock(hidden_dim, dropout)
+#         self.res2 = ResBlock(hidden_dim, dropout)
+#         self.gated_skip = GatedSkip(hidden_dim, skip_dim, hidden_dim)
+
+#         # 再来一个残差块
+#         self.res3 = ResBlock(hidden_dim, dropout)
+
+#         # 输出
+#         self.fc_out = nn.Linear(hidden_dim, out_dim)
+
+#     def forward(self, x, skip_emb):
+#         x = self.res1(self.act(self.fc_in(x)))
+#         x = self.res2(x)
+#         x = self.gated_skip(x, skip_emb)
+#         x = self.res3(x)
+#         return self.fc_out(x)
+
+
+class SHSDeformNet(nn.Module):
+    def __init__(self, input_dim=108, skip_dim=36, hidden_dim=256, out_dim=10, dropout=0.1):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        
+        self.fc3 = nn.Linear(hidden_dim+skip_dim, hidden_dim)
+
+        self.fc4 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc5 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc_out = nn.Linear(hidden_dim, out_dim)
+
+        self.act = nn.SiLU()
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x, skip_emb):
+        x = self.drop(self.act(self.fc1(x)))
+        x = self.drop(self.act(self.fc2(x)))
+
+        # 更高效的 skip 融合
+        # x = x + self.skip_proj(skip_emb)
+        x = torch.cat([x, skip_emb], dim=-1)
+
+        x = self.drop(self.act(self.fc3(x)))
+        x = self.drop(self.act(self.fc4(x)))
+        x = self.drop(self.act(self.fc5(x)))
+        return self.fc_out(x)
+
 # 路径 A：
 class deform_network(nn.Module):
     def __init__(self, args) :
@@ -95,24 +170,7 @@ class deform_network(nn.Module):
         self.rotation_scaling_poc = self.rotation_scaling_poc.to(device)
         self.opacity_poc = self.opacity_poc.to(device)
         self.apply(initialize_weights)
-        self.shs_deform = nn.Sequential(
-            nn.Linear(108, 256),
-            nn.ReLU(),
-            nn.Dropout(p=0.1),
-            nn.Linear(256, 256),
-            nn.ReLU(),
-            nn.Dropout(p=0.1),
-            nn.Linear(292, 256),  # skip 后：256 + 36 = 292
-            nn.ReLU(),
-            nn.Dropout(p=0.1),
-            nn.Linear(256, 256),
-            nn.ReLU(),
-            nn.Dropout(p=0.1),
-            nn.Linear(256, 256),  # 新增的一层隐藏层
-            nn.ReLU(),
-            nn.Dropout(p=0.1),
-            nn.Linear(256, 10)
-        ).cuda()
+        self.shs_deform = SHSDeformNet()
         # print(self)
 
     # def save_deform_weights(self, model_path, iteration):
@@ -165,11 +223,7 @@ class deform_network(nn.Module):
             point_emb = torch.cat([pose.unsqueeze(0).repeat(point.shape[0], 1), pos_emb0], dim=-1)
 
         # 暂时"复用"了 self.deformation_net.shs_deform 这串层当做通用校正 MLP（并在 i==4 时做一次 skip，把 pos_emb0 再拼进去）。
-        for i in range(len(self.shs_deform)):
-            if i==4:
-                point_emb = torch.cat([point_emb, pos_emb0], dim=-1)
-            point_emb = self.shs_deform[i](point_emb)
-        offset = point_emb
+        offset = self.shs_deform(point_emb, pos_emb0)
         
         means3D = point + offset[..., :3]
         scales = scales + offset[..., 3:6]
