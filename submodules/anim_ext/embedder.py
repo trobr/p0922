@@ -30,23 +30,25 @@ class PosEncFunction(Function):
 
 class EmbedderModule(nn.Module):
     def __init__(self, input_dims=3,
-                 kick_in_iter=0.0, full_band_iter=100.0):
+                 kick_in_iter_rate=0.0):
         super().__init__()
         self.input_dims = input_dims
-        self.kick_in_iter = float(kick_in_iter)
-        self.full_band_iter = float(full_band_iter)
+        self.kick_in_iter_rate = kick_in_iter_rate
         self.include_input = False
         # iteration is expected as a scalar passed during forward (e.g., training step)
         # you can change API to store a buffer if desired
+
+    def set_full_band_iter(self, full_band_iter):
+        self.full_band_iter = float(full_band_iter)
+        self.kick_in_iter = float(self.kick_in_iter_rate * full_band_iter)
 
     @property
     def out_dim(self):
         return (self.input_dims if self.include_input else 0) + self.num_freqs * 2 * self.input_dims
 
-    def forward(self, inputs, iteration=torch.tensor(0.)):
+    def forward(self, inputs, iteration, total_iteration):
         # inputs: (B, input_dims)
         if not inputs.is_cuda:
             raise RuntimeError("EmbedderModule currently requires CUDA tensors")
         # iteration can be a scalar tensor or float
-        iter_f = float(iteration.item()) if torch.is_tensor(iteration) else float(iteration)
-        return PosEncFunction.apply(inputs, iter_f, self.kick_in_iter, self.full_band_iter)
+        return PosEncFunction.apply(inputs, iteration, self.kick_in_iter_rate * total_iteration, total_iteration)
