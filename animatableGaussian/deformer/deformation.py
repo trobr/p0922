@@ -12,6 +12,7 @@ import torch.nn.init as init
 
 # from scene.grid import HashHexPlane
 
+from submodules.anim_ext.embedder import EmbedderModule
 from roma import quat_product, quat_xyzw_to_wxyz, quat_wxyz_to_xyzw
 
 def batch_quaternion_multiply(q1, q2):
@@ -145,6 +146,8 @@ class SHSDeformNet(nn.Module):
 
 # 路径 A：
 class deform_network(nn.Module):
+    total_iteration = 0
+
     def __init__(self, args) :
         super(deform_network, self).__init__()
         net_width = args.net_width if hasattr(args, 'net_width') else 64
@@ -195,6 +198,9 @@ class deform_network(nn.Module):
     #     weights_path = os.path.join(model_path, 'deform.pth')# "point_cloud/iteration_{}".format(loaded_iter)
     #     self.deformation_net.load_state_dict(torch.load(weights_path))
 
+    def set_total_iteration(self, total_iteration):
+        self.embedder_module = EmbedderModule(3, kick_in_iter=0.1 * deform_network.total_iteration, full_band_iter=deform_network.total_iteration).to(next(self.parameters()).device)
+
     def forward(self, point, scales=None, rotations=None,pose=None,iteration=None,total_iteration=None):
         return self.forward_dynamic(point, scales, rotations,pose,iteration,total_iteration)
 
@@ -222,6 +228,7 @@ class deform_network(nn.Module):
 
         # TODO(keye): 这里get_embedder链路可以要优化，不要每次都重新创建
         pos_emb0 = get_embedder(iteration, multires=6, kick_in_iter=0.1 * total_iteration, full_band_iter=total_iteration)[0](point)
+        # pos_emb0 = self.embedder_module(point, iteration)
         #point_emb = torch.cat([pose.unsqueeze(0).repeat(point.shape[0], 1), pos_emb0], dim=-1)
 
         # 拼接姿态

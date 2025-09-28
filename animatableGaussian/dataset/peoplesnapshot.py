@@ -202,6 +202,7 @@ class PeopleSnapshotDataModule(pl.LightningDataModule):
             dataset = PeopleSnapshotDataset(
                 opt.dataroot, opt.max_freq, split, opt.get(split))
             setattr(self, f"{split}set", dataset)
+            num_workers = 2
         self.num_workers = num_workers
 
     def train_dataloader(self):

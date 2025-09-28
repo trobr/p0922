@@ -380,6 +380,12 @@ class NeRFModel(pl.LightningModule):
         img = Image.fromarray(img)
         img.save(f"val/{self.current_epoch}.png")
 
+    def on_fit_start(self):
+        self.model.deform_network.set_total_iteration(self._get_total_training_steps())
+
+    def on_test_start(self):
+        self.model.deform_network.set_total_iteration(1000)
+
     @torch.no_grad()
     def test_step(self, batch, batch_idx, *args, **kwargs):
         camera_params = batch["camera_params"]
