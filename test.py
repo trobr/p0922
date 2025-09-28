@@ -3,7 +3,8 @@ import hydra
 import pytorch_lightning as pl
 
 
-@hydra.main(config_path="./confs", config_name="gala", version_base="1.1")
+# @hydra.main(config_path="./confs", config_name="gala", version_base="1.1")
+@hydra.main(config_path="./confs", config_name="peoplesnapshot", version_base="1.1")
 def main(opt):
     pl.seed_everything(0)
 
