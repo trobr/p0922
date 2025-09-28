@@ -205,54 +205,54 @@ class SMPLModel(nn.Module):
                 total_iteration=total_iteration
             )
             
-            # 变形后的数据统计
-            points_deformed_mean = deformed_points.mean(dim=0)
-            points_deformed_std = deformed_points.std()
-            scales_deformed_mean = deformed_scales.mean(dim=0)
-            scales_deformed_std = deformed_scales.std()
-            rotations_deformed_mean = deformed_rotations.mean(dim=0)
+            # # 变形后的数据统计
+            # points_deformed_mean = deformed_points.mean(dim=0)
+            # points_deformed_std = deformed_points.std()
+            # scales_deformed_mean = deformed_scales.mean(dim=0)
+            # scales_deformed_std = deformed_scales.std()
+            # rotations_deformed_mean = deformed_rotations.mean(dim=0)
             
-            # 计算变形量
-            points_delta = (deformed_points - points).abs()
-            scales_delta = (deformed_scales - scales).abs()
-            rotations_delta = (deformed_rotations - rotations).abs()
+            # # 计算变形量
+            # points_delta = (deformed_points - points).abs()
+            # scales_delta = (deformed_scales - scales).abs()
+            # rotations_delta = (deformed_rotations - rotations).abs()
             
-            # 监控输出（每100次迭代输出一次，避免日志过多）
-            if iteration % 100 == 0 or iteration < 10:
-                print(f"\n=== Deformation Monitor (iter {iteration}/{total_iteration}) ===")
-                print(f"Points - Original mean: {points_orig_mean.detach().cpu().numpy()}")
-                print(f"Points - Deformed mean: {points_deformed_mean.detach().cpu().numpy()}")
-                print(f"Points - Delta mean: {points_delta.mean().item():.6f}, max: {points_delta.max().item():.6f}")
-                print(f"Points - Std change: {points_orig_std.item():.6f} -> {points_deformed_std.item():.6f}")
+            # # 监控输出（每100次迭代输出一次，避免日志过多）
+            # if iteration % 100 == 0 or iteration < 10:
+            #     print(f"\n=== Deformation Monitor (iter {iteration}/{total_iteration}) ===")
+            #     print(f"Points - Original mean: {points_orig_mean.detach().cpu().numpy()}")
+            #     print(f"Points - Deformed mean: {points_deformed_mean.detach().cpu().numpy()}")
+            #     print(f"Points - Delta mean: {points_delta.mean().item():.6f}, max: {points_delta.max().item():.6f}")
+            #     print(f"Points - Std change: {points_orig_std.item():.6f} -> {points_deformed_std.item():.6f}")
                 
-                print(f"Scales - Original mean: {scales_orig_mean.detach().cpu().numpy()}")
-                print(f"Scales - Deformed mean: {scales_deformed_mean.detach().cpu().numpy()}")
-                print(f"Scales - Delta mean: {scales_delta.mean().item():.6f}, max: {scales_delta.max().item():.6f}")
-                print(f"Scales - Std change: {scales_orig_std.item():.6f} -> {scales_deformed_std.item():.6f}")
+            #     print(f"Scales - Original mean: {scales_orig_mean.detach().cpu().numpy()}")
+            #     print(f"Scales - Deformed mean: {scales_deformed_mean.detach().cpu().numpy()}")
+            #     print(f"Scales - Delta mean: {scales_delta.mean().item():.6f}, max: {scales_delta.max().item():.6f}")
+            #     print(f"Scales - Std change: {scales_orig_std.item():.6f} -> {scales_deformed_std.item():.6f}")
                 
-                print(f"Rotations - Original mean: {rotations_orig_mean.detach().cpu().numpy()}")
-                print(f"Rotations - Deformed mean: {rotations_deformed_mean.detach().cpu().numpy()}")
-                print(f"Rotations - Delta mean: {rotations_delta.mean().item():.6f}, max: {rotations_delta.max().item():.6f}")
+            #     print(f"Rotations - Original mean: {rotations_orig_mean.detach().cpu().numpy()}")
+            #     print(f"Rotations - Deformed mean: {rotations_deformed_mean.detach().cpu().numpy()}")
+            #     print(f"Rotations - Delta mean: {rotations_delta.mean().item():.6f}, max: {rotations_delta.max().item():.6f}")
                 
-                if offset is not None:
-                    print(f"Offset - mean: {offset.mean().item():.6f}, std: {offset.std().item():.6f}")
-                else:
-                    print("Offset - None")
-                print("=" * 60)
+            #     if offset is not None:
+            #         print(f"Offset - mean: {offset.mean().item():.6f}, std: {offset.std().item():.6f}")
+            #     else:
+            #         print("Offset - None")
+            #     print("=" * 60)
             
-            # 检查是否有异常值
-            if torch.isnan(deformed_points).any() or torch.isinf(deformed_points).any():
-                print(f"WARNING: NaN or Inf detected in deformed_points at iteration {iteration}")
-            if torch.isnan(deformed_scales).any() or torch.isinf(deformed_scales).any():
-                print(f"WARNING: NaN or Inf detected in deformed_scales at iteration {iteration}")
-            if torch.isnan(deformed_rotations).any() or torch.isinf(deformed_rotations).any():
-                print(f"WARNING: NaN or Inf detected in deformed_rotations at iteration {iteration}")
+            # # 检查是否有异常值
+            # if torch.isnan(deformed_points).any() or torch.isinf(deformed_points).any():
+            #     print(f"WARNING: NaN or Inf detected in deformed_points at iteration {iteration}")
+            # if torch.isnan(deformed_scales).any() or torch.isinf(deformed_scales).any():
+            #     print(f"WARNING: NaN or Inf detected in deformed_scales at iteration {iteration}")
+            # if torch.isnan(deformed_rotations).any() or torch.isinf(deformed_rotations).any():
+            #     print(f"WARNING: NaN or Inf detected in deformed_rotations at iteration {iteration}")
             
-            # 检查变形是否过大（可能导致渲染问题）
-            if points_delta.max() > 1.0:  # 如果最大位移超过1.0单位
-                print(f"WARNING: Large point displacement detected at iteration {iteration}: max delta = {points_delta.max().item():.6f}")
-            if scales_delta.max() > 0.5:  # 如果最大尺度变化超过0.5
-                print(f"WARNING: Large scale change detected at iteration {iteration}: max delta = {scales_delta.max().item():.6f}")
+            # # 检查变形是否过大（可能导致渲染问题）
+            # if points_delta.max() > 1.0:  # 如果最大位移超过1.0单位
+            #     print(f"WARNING: Large point displacement detected at iteration {iteration}: max delta = {points_delta.max().item():.6f}")
+            # if scales_delta.max() > 0.5:  # 如果最大尺度变化超过0.5
+            #     print(f"WARNING: Large scale change detected at iteration {iteration}: max delta = {scales_delta.max().item():.6f}")
             
             # 使用变形后的参数
             v_displaced = deformed_points.reshape(v_displaced.shape)  # 恢复原始形状

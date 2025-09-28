@@ -346,7 +346,7 @@ class NeRFModel(pl.LightningModule):
                         k=self.aiap_k
                     )
                     loss += self.lambda_isopos * loss_isopos
-                    self.log('train_loss_isopos', loss_isopos, prog_bar=False)
+                    # self.log('train_loss_isopos', loss_isopos, prog_bar=False)
                 
                 # 协方差等距损失 L_isocov  
                 if self.lambda_isocov > 0:
@@ -356,14 +356,14 @@ class NeRFModel(pl.LightningModule):
                         k=self.aiap_k
                     )
                     loss += self.lambda_isocov * loss_isocov
-                    self.log('train_loss_isocov', loss_isocov, prog_bar=False)
+                    # self.log('train_loss_isocov', loss_isocov, prog_bar=False)
                     
             except Exception as e:
                 print(f"Warning: AIAP loss computation failed: {e}")
                 # 如果AIAP计算失败，继续训练但不添加该损失项
                 pass
         
-        self.log('train_loss', loss, prog_bar=True)
+        # self.log('train_loss', loss, prog_bar=True)
         return loss
 
     @torch.no_grad()
@@ -493,12 +493,12 @@ class NeRFModel(pl.LightningModule):
             stats = self.density_controller.split_with_scale(self.model, optimizer, iteration)
 
         # 记录统计
-        if stats.get("split_count", 0) > 0:
-            # 说明：这里转成 float 可以避免 Lightning 的类型转换提示（可选）
-            self.log('split_count', float(stats["split_count"]), prog_bar=False)
-            self.log('total_points', float(stats["total_points"]), prog_bar=True)
-            if "threshold" in stats:
-                self.log('split_threshold', float(stats["threshold"]), prog_bar=False)
+        # if stats.get("split_count", 0) > 0:
+        #     # 说明：这里转成 float 可以避免 Lightning 的类型转换提示（可选）
+        #     self.log('split_count', float(stats["split_count"]), prog_bar=False)
+        #     self.log('total_points', float(stats["total_points"]), prog_bar=True)
+        #     if "threshold" in stats:
+        #         self.log('split_threshold', float(stats["threshold"]), prog_bar=False)
 
     def _resize_smpl_to_target_points(self, target_N: int):
         """将底层 SMPLModel 的点相关参数/缓冲区调整为 target_N 的形状，以便严格加载 checkpoint。"""
