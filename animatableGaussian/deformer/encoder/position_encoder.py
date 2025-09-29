@@ -4,6 +4,9 @@ import torch.nn.functional as F
 import torch.nn as nn
 
 
+from animatableGaussian.deformer.encoder.attention import *
+
+
 class UVEncoder(nn.Module):
     def __init__(self, num_channels, resolution=512, num_players=1):
         super().__init__()
@@ -81,6 +84,22 @@ class HashEncoder(nn.Module):
                     "n_neurons": 64,
                     "n_hidden_layers": 2,
                 }
+                # encoding_config={
+                #     "otype": "HashGrid",
+                #     "n_levels": 24,
+                #     "n_features_per_level": 2,
+                #     "log2_hashmap_size": 19,
+                #     "base_resolution": 8,
+                #     "per_level_scale": 1.35,
+                # },
+                # network_config={
+                #     "otype": "FullyFusedMLP",
+                #     "activation": "ReLU",
+                #     "output_activation": "None",
+                #     "n_neurons": 64,
+                #     "n_hidden_layers": 2,
+                #     "smoothstep": True,
+                # }
             ))
         self.networks = nn.ModuleList(self.networks)
 
@@ -89,6 +108,102 @@ class HashEncoder(nn.Module):
         for i in range(self.num_players):
             self.outputs.append(self.networks[i](x[i]))
         return torch.stack(self.outputs).float()
+
+
+class SphericalHarmonicsEncoder(nn.Module):
+    def __init__(self, num_channels, num_players=1):
+        super().__init__()
+        self.num_players = num_players
+        self.networks = nn.ModuleList()
+
+        for _ in range(num_players):
+            net = tcnn.NetworkWithInputEncoding(
+                n_input_dims=3,
+                n_output_dims=num_channels,
+                encoding_config={
+                    "otype": "SphericalHarmonics",
+                    "degree": 4,   # 可调
+                },
+                network_config={
+                    "otype": "FullyFusedMLP",
+                    "activation": "ReLU",
+                    "output_activation": "None",
+                    "n_neurons": 64,
+                    "n_hidden_layers": 2,
+                }
+            )
+
+            self.networks.append(net)
+
+    def forward(self, x):
+        """
+        x: [num_players, batch, 3]
+        return: [num_players, batch, num_channels]
+        """
+        outs = []
+        for i in range(self.num_players):
+            outs.append(self.networks[i](x[i]))
+        return torch.stack(outs).float()
+
+
+class HashEncoderResidual(nn.Module):
+    def __init__(self, num_channels, num_players=1):
+        """
+        num_channels: 输出维度 C
+        num_players:  玩家数 P
+        """
+        super().__init__()
+        self.num_players = num_players
+        self.num_channels = num_channels
+
+        self.encoders = nn.ModuleList()
+        self.gains = nn.ParameterList()
+        self.linear_heads = nn.ModuleList()
+        self.residual_mlps = nn.ModuleList()
+
+        for _ in range(num_players):
+            encoder = tcnn.Encoding(
+                n_input_dims=3,
+                encoding_config={
+                    "otype": "HashGrid",
+                    "n_levels": 16,
+                    "n_features_per_level": 2,
+                    "log2_hashmap_size": 17,
+                    "base_resolution": 16,
+                    "per_level_scale": 1.5,
+                }
+            )
+            feat_dim = encoder.n_output_dims  # F
+            gain = nn.Parameter(torch.ones(feat_dim))
+            linear_head = nn.Linear(feat_dim, num_channels)
+            residual_mlp = nn.Sequential(
+                nn.Linear(feat_dim, num_channels),
+                nn.ReLU(inplace=True),
+                nn.Linear(num_channels, num_channels)
+            )
+            self.encoders.append(encoder)
+            self.gains.append(gain)
+            self.linear_heads.append(linear_head)
+            self.residual_mlps.append(residual_mlp)
+
+    def forward(self, x):
+        """
+        x: [P, N, 3]
+        return: [P, N, C]
+        """
+        outs = []
+        for pid in range(self.num_players):
+            feat = self.encoders[pid](x[pid])  # [N, F]
+            feat = feat * self.gains[pid]      # per-feature gain
+
+            y_linear = self.linear_heads[pid](feat)
+
+            y_res = self.residual_mlps[pid](feat)
+
+            y = y_linear + y_res
+            outs.append(y)
+
+        return torch.stack(outs).float()
 
 
 class SHEncoder(nn.Module):
