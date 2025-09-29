@@ -291,7 +291,7 @@ class NeRFModel(pl.LightningModule):
         
         if return_aux_info:
             return image, aux_info
-        return image
+        return image, None
 
     def _get_total_training_steps(self):
         # 优先使用 max_steps（若设置且有效）
@@ -319,7 +319,7 @@ class NeRFModel(pl.LightningModule):
         total_iteration = self._get_total_training_steps()
         
         # 新增: 获取渲染图像和辅助信息
-        image, aux_info = self(camera_params, model_param, batch["time"], iteration, total_iteration, return_aux_info=True)
+        image, aux_info = self(camera_params, model_param, batch["time"], iteration, total_iteration, return_aux_info=False)
         gt_image = batch["gt"]
         
         # 基础损失
@@ -364,7 +364,7 @@ class NeRFModel(pl.LightningModule):
         model_param = batch["model_param"]
         iteration = int(self.global_step)
         total_iteration = self._get_total_training_steps()
-        rgb = self(camera_params, model_param, batch["time"], iteration, total_iteration)
+        rgb, _ = self(camera_params, model_param, batch["time"], iteration, total_iteration)
         rgb_gt = batch["gt"]
         image = torch.cat((rgb, rgb_gt), dim=2)
         img = (255. * image.permute(1, 2, 0)
@@ -379,7 +379,7 @@ class NeRFModel(pl.LightningModule):
         # 直接设定一个足够大的总迭代，避免访问训练数据
         total_iteration = 1000
         iteration = total_iteration
-        rgb = self(camera_params, model_param, batch["time"], iteration, total_iteration, train=False)
+        rgb, _ = self(camera_params, model_param, batch["time"], iteration, total_iteration, train=False)
         rgb_gt = batch["gt"]
         losses = {
             # add some extra loss here

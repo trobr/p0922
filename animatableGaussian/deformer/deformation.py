@@ -91,29 +91,19 @@ class GatedSkip(nn.Module):
     def forward(self, x, skip_emb):
         return self.fc(x) + torch.sigmoid(self.gate(skip_emb)) * x
 
-# class SHSDeformNet(nn.Module):
-#     def __init__(self, input_dim=108, skip_dim=36, hidden_dim=160, out_dim=10, dropout=0.1):
-#         super().__init__()
-#         self.act = nn.GELU()
-#         self.fc_in = nn.Linear(input_dim, hidden_dim)
 
-#         # 两个残差块
-#         self.res1 = ResBlock(hidden_dim, dropout)
-#         self.res2 = ResBlock(hidden_dim, dropout)
-#         self.gated_skip = GatedSkip(hidden_dim, skip_dim, hidden_dim)
-
-#         # 再来一个残差块
-#         self.res3 = ResBlock(hidden_dim, dropout)
-
-#         # 输出
-#         self.fc_out = nn.Linear(hidden_dim, out_dim)
-
-#     def forward(self, x, skip_emb):
-#         x = self.res1(self.act(self.fc_in(x)))
-#         x = self.res2(x)
-#         x = self.gated_skip(x, skip_emb)
-#         x = self.res3(x)
-#         return self.fc_out(x)
+class Film(nn.Module):
+    def __init__(self, pe_dim, hidden_dim):
+        super().__init__()
+        self.mlp = nn.Sequential(
+            nn.Linear(pe_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, hidden_dim*2),
+        )
+    
+    def forward(self, x, pe):
+        gamma, beta = self.mlp(pe).chunk(2, dim=-1)
+        return x * (1 + gamma) + beta
 
 
 class SHSDeformNet(nn.Module):
@@ -122,6 +112,7 @@ class SHSDeformNet(nn.Module):
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         
+        # self.film = Film(pe_dim=skip_dim, hidden_dim=hidden_dim)
         self.fc3 = nn.Linear(hidden_dim+skip_dim, hidden_dim)
 
         self.fc4 = nn.Linear(hidden_dim, hidden_dim)
@@ -137,6 +128,7 @@ class SHSDeformNet(nn.Module):
 
         # 更高效的 skip 融合
         # x = x + self.skip_proj(skip_emb)
+        # x = self.film(x, skip_emb)
         x = torch.cat([x, skip_emb], dim=-1)
 
         x = self.drop(self.act(self.fc3(x)))
