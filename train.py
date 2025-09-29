@@ -1,10 +1,12 @@
-from animatableGaussian.model.nerf_model import NeRFModel
-import hydra
-import pytorch_lightning as pl
 
 import torch
 torch.set_float32_matmul_precision('medium')
 torch.backends.cudnn.benchmark = True
+
+
+from animatableGaussian.model.nerf_model import NeRFModel
+import hydra
+import pytorch_lightning as pl
 
 
 @hydra.main(config_path="./confs", config_name="peoplesnapshot", version_base="1.1")
