@@ -188,12 +188,12 @@ class SMPLModel(nn.Module):
             pose = full_body_pose.reshape(-1)  # 展平姿态参数
             
             # 变形前的数据统计
-            points_orig_mean = points.mean(dim=0)
-            points_orig_std = points.std()
-            scales_orig_actual = torch.exp(self.scales.reshape([-1, 3]))
-            scales_orig_mean = scales_orig_actual.mean(dim=0)
-            scales_orig_std = scales_orig_actual.std()
-            rotations_orig_mean = rotations.mean(dim=0)
+            # points_orig_mean = points.mean(dim=0)
+            # points_orig_std = points.std()
+            # scales_orig_actual = torch.exp(self.scales.reshape([-1, 3]))
+            # scales_orig_mean = scales_orig_actual.mean(dim=0)
+            # scales_orig_std = scales_orig_actual.std()
+            # rotations_orig_mean = rotations.mean(dim=0)
             
             # 调用 deform_network.forward
             deformed_points, deformed_scales, deformed_rotations, offset = self.deform_network.forward(
