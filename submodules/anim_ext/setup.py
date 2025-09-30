@@ -43,6 +43,17 @@ setup(
                 ]
             }
         ),
+        CUDAExtension(
+            name='defor_cuda',
+            sources=[
+                'defor_post_cuda.cu',
+                'defor_post_kernel.cu',
+            ],
+            extra_compile_args={
+                'cxx': ['-O2'],
+                'nvcc': ['-O2', '-lineinfo']
+            }
+        ),
     ],
     cmdclass={'build_ext': BuildExtension.with_options(use_ninja=True),}
 )

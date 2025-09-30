@@ -14,6 +14,7 @@ import torch.nn.init as init
 
 from submodules.anim_ext.embedder import EmbedderModule
 from roma import quat_product, quat_xyzw_to_wxyz, quat_wxyz_to_xyzw
+from submodules.anim_ext.defor_post import deform_post
 
 def batch_quaternion_multiply(q1, q2):
     """
@@ -229,33 +230,10 @@ class deform_network(nn.Module):
 
         # 暂时"复用"了 self.deformation_net.shs_deform 这串层当做通用校正 MLP（并在 i==4 时做一次 skip，把 pos_emb0 再拼进去）。
         offset = self.shs_deform(point_emb, pos_emb0)
+
+        means3D, scales_out, rotations_out = deform_post(point, offset, scales, rotations)
         
-        means3D = point + offset[..., :3]
-        scales = scales + offset[..., 3:6]
-        # 适度约束 log-scales 范围，避免数值爆炸（可按需要调整上下界）
-        # scales = torch.clamp(scales, min=math.log(1e-6), max=math.log(1.0))
-        
-        # === 修复四元数处理路径（不使用增益系数）===
-        delta_rot = offset[..., 6:]
-        q1 = delta_rot.clone()
-        q1[:, 0] = 1.0  # w分量设为1
-        
-        # 归一化q1，确保是单位四元数
-        q1 = F.normalize(q1, p=2, dim=1)
-        
-        # 确保输入旋转q2也是归一化的
-        q2 = F.normalize(rotations, p=2, dim=1)
-        
-        # 四元数乘积，并在前后都做归一化
-        q1_wxyz = quat_wxyz_to_xyzw(q1)  # 转换为roma格式
-        q2_wxyz = quat_wxyz_to_xyzw(q2)
-        q_result_wxyz = quat_product(q1_wxyz, q2_wxyz)  # roma四元数乘积
-        q_result = quat_xyzw_to_wxyz(q_result_wxyz)  # 转换回来
-        
-        # 最终归一化输出四元数
-        rotations = F.normalize(q_result, p=2, dim=1)
-        
-        return means3D, scales, rotations, offset
+        return means3D, scales_out, rotations_out, offset
 
     def get_mlp_parameters(self):
         # 仅返回路径A中实际存在的MLP参数
