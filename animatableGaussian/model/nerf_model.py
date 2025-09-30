@@ -16,6 +16,67 @@ import inspect
 import torch.nn.functional as F
 # 顶部：新增导入
 from animatableGaussian.gaussian_density import GaussianDensityController
+from fast_rasterizer import fastgs_rasterizer
+
+
+def build_rasterizer_cam_params(cam_params, shs, active_sh_bases=2, default_near=0.1, default_far=10.0):
+    """
+    cam_params: dict with keys:
+        'image_width', 'image_height', 'tanfovx', 'tanfovy', 'bg',
+        'scale_modifier', 'viewmatrix', 'projmatrix', 'campos'
+    active_sh_bases: int, number of spherical harmonic bases
+    default_near, default_far: fallback near/far plane if projmatrix not available
+
+    Returns dict with keys:
+        'cam_position' (torch.Tensor)
+        'active_sh_bases' (int)
+        'width', 'height' (int)
+        'focal_x', 'focal_y' (float)
+        'center_x', 'center_y' (float)
+        'near_plane', 'far_plane' (float)
+    """
+    width = cam_params['image_width']
+    height = cam_params['image_height']
+    tanfovx = cam_params['tanfovx']
+    tanfovy = cam_params['tanfovy']
+
+    # focal lengths in pixels
+    focal_x = width / (2.0 * tanfovx)
+    focal_y = height / (2.0 * tanfovy)
+
+    # assume optical center at image center
+    center_x = width / 2.0
+    center_y = height / 2.0
+
+    # try to parse near/far from projmatrix if available
+    proj = cam_params.get('projmatrix', None)
+    near_plane = default_near
+    far_plane = default_far
+    if proj is not None:
+        proj = proj.reshape(4,4)  # ensure 4x4
+        # OpenGL style perspective projection matrix:
+        # proj[2,2] = -(f+n)/(f-n), proj[2,3] = -2fn/(f-n)
+        # solve for n, f
+        m22 = proj[2,2]
+        m23 = proj[2,3]
+        if m22 != -1:  # avoid degenerate
+            near_plane = m23 / (m22 - 1.0)
+            far_plane = m23 / (m22 + 1.0)
+
+    return {
+        'cam_position': cam_params['campos'],
+        'active_sh_bases': active_sh_bases,
+        'width': width,
+        'height': height,
+        'focal_x': float(focal_x),
+        'focal_y': float(focal_y),
+        'center_x': float(center_x),
+        'center_y': float(center_y),
+        'near_plane': float(near_plane),
+        'far_plane': float(far_plane),
+        "sh_coefficients_0": shs[:, 0, :],
+        "sh_coefficients_rest": shs[:, 1:, :]
+    }
 
 
 class Evaluator(nn.Module):
@@ -263,31 +324,38 @@ class NeRFModel(pl.LightningModule):
             means2D.retain_grad()
         except:
             pass
-        raster_settings = GaussianRasterizationSettings(
-            sh_degree=self.sh_degree,
-            prefiltered=False,
-            debug=False, **camera_params
-        )
-        rasterizer = GaussianRasterizer(raster_settings=raster_settings)
-        cov3D_precomp = None
-        if render_point:
-            colors_precomp = torch.rand_like(scales)
-            scales /= 10
-            opacity *= 100
-            shs = None
-        else:
-            colors_precomp = None
-        image, radii = rasterizer(
-            means3D=verts,
-            means2D=means2D,
-            shs=shs,
-            colors_precomp=colors_precomp,
-            opacities=opacity,
-            scales=scales,
-            rotations=rotations,
-            aos=aos,
-            transforms=transforms,
-            cov3D_precomp=cov3D_precomp)
+        kwargs = build_rasterizer_cam_params(camera_params, shs)
+        kwargs['means'] = verts
+        kwargs['scales_raw'] = scales
+        kwargs['rotations_raw'] = rotations
+        kwargs['opacities_raw'] = opacity
+        kwargs['w2c'] = transforms
+        image, _ = fastgs_rasterizer(**kwargs)
+        # raster_settings = GaussianRasterizationSettings(
+        #     sh_degree=self.sh_degree,
+        #     prefiltered=False,
+        #     debug=False, **camera_params
+        # )
+        # rasterizer = GaussianRasterizer(raster_settings=raster_settings)
+        # cov3D_precomp = None
+        # if render_point:
+        #     colors_precomp = torch.rand_like(scales)
+        #     scales /= 10
+        #     opacity *= 100
+        #     shs = None
+        # else:
+        #     colors_precomp = None
+        # image, radii = rasterizer(
+        #     means3D=verts,
+        #     means2D=means2D,
+        #     shs=shs,
+        #     colors_precomp=colors_precomp,
+        #     opacities=opacity,
+        #     scales=scales,
+        #     rotations=rotations,
+        #     aos=aos,
+        #     transforms=transforms,
+        #     cov3D_precomp=cov3D_precomp)
         
         if return_aux_info:
             return image, aux_info

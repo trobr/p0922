@@ -275,4 +275,4 @@ class SMPLModel(nn.Module):
 
         T = lbs(full_body_pose, transl, self.J, self.parents, self.weights)
 
-        return v_displaced.reshape([-1, 3]), torch.sigmoid(self.opacity), scales_out, rotations_out, shs, aos, T[:, :, :3, :].reshape([-1, 3, 4])
+        return v_displaced.reshape([-1, 3]), torch.sigmoid(self.opacity), scales_out, rotations_out, shs, aos, T  # T[:, :, :3, :].reshape([-1, 3, 4])
