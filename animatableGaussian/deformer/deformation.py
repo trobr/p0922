@@ -107,6 +107,93 @@ class Film(nn.Module):
         return x * (1 + gamma) + beta
 
 
+class ResBlockPreAct(nn.Module):
+    def __init__(self, dim, scale=0.1, dropout=0.0):
+        super().__init__()
+        self.fc1 = nn.Linear(dim, dim)
+        self.fc2 = nn.Linear(dim, dim)
+        self.act = nn.SiLU()
+        self.scale = scale
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x):
+        h = self.fc1(self.act(x))
+        h = self.drop(h)
+        h = self.fc2(self.act(h))
+        h = self.drop(h)
+        # 关键：残差后不再激活，且缩放
+        return x + h * self.scale
+
+def init_resblock(rb: ResBlockPreAct):
+    nn.init.kaiming_uniform_(rb.fc1.weight, a=0.0, nonlinearity='relu')
+    nn.init.zeros_(rb.fc1.bias)
+    nn.init.normal_(rb.fc2.weight, mean=0.0, std=1e-3) # 或者 kaiming 后乘 0.1
+    nn.init.zeros_(rb.fc2.bias)
+
+
+# class CatFuseIdentity(nn.Module):
+#     def __init__(self, hidden_dim, skip_dim):
+#         super().__init__()
+#         self.proj = nn.Linear(hidden_dim + skip_dim, hidden_dim)
+#         # 恒等初始化：对 h 保持恒等，对 skip 先置零
+#         with torch.no_grad():
+#             self.proj.weight.zero_()
+#             self.proj.bias.zero_()
+#             eye = torch.eye(hidden_dim)
+#             self.proj.weight[:hidden_dim, :hidden_dim] = eye
+
+#     def forward(self, h, skip_emb):
+#         x = torch.cat([h, skip_emb], dim=-1)
+#         return self.proj(x)  # 初始等价于返回 h
+
+class FiLM(nn.Module):
+    def __init__(self, skip_dim, hidden_dim):
+        super().__init__()
+        # 单层线性，初始为0，确保起步是恒等
+        self.to_gb = nn.Linear(skip_dim, hidden_dim * 2)
+        nn.init.zeros_(self.to_gb.weight)
+        nn.init.zeros_(self.to_gb.bias)
+
+    def forward(self, h, skip_emb):
+        gamma, beta = self.to_gb(skip_emb).chunk(2, dim=-1)
+        return h * (1.0 + gamma) + beta
+
+class SHSResDeformNet(nn.Module):
+    def __init__(self, input_dim=108, skip_dim=36, hidden_dim=160, out_dim=10, dropout=0.0, res_scale=0.1):
+        super().__init__()
+        self.act = nn.SiLU()
+        self.fc_in = nn.Linear(input_dim, hidden_dim)
+
+        # 残差块（预激活 + 缩放），去掉强dropout
+        self.res1 = ResBlockPreAct(hidden_dim, scale=res_scale, dropout=dropout)
+        self.res2 = ResBlockPreAct(hidden_dim, scale=res_scale, dropout=dropout)
+
+        # 仅在一个点做 skip 融合，且初始为恒等
+        self.film = FiLM(skip_dim, hidden_dim)
+        # self.film = CatFuseIdentity(hidden_dim, skip_dim)
+
+        self.res3 = ResBlockPreAct(hidden_dim, scale=res_scale, dropout=dropout)
+
+        # 输出层零初始化，保证初期不形变
+        self.fc_out = nn.Linear(hidden_dim, out_dim)
+        nn.init.zeros_(self.fc_out.weight)
+        nn.init.zeros_(self.fc_out.bias)
+
+        nn.init.kaiming_uniform_(self.fc_in.weight, a=0.0, nonlinearity='relu')
+        nn.init.zeros_(self.fc_in.bias)
+        init_resblock(self.res1)
+        init_resblock(self.res2)
+        init_resblock(self.res3)
+
+    def forward(self, x, skip_emb):
+        h = self.act(self.fc_in(x))
+        h = self.res1(h)
+        h = self.res2(h)
+        h = self.film(h, skip_emb)     # 初始是恒等
+        h = self.res3(h)
+        return self.fc_out(h)
+
+
 class SHSDeformNet(nn.Module):
     def __init__(self, input_dim=108, skip_dim=36, hidden_dim=256, out_dim=10, dropout=0.1):
         super().__init__()
@@ -167,6 +254,7 @@ class deform_network(nn.Module):
         # self.shs_deform = SHSDeformNet()
 
         self.shs_deform = torch.compile(SHSDeformNet().to(device))
+        # self.shs_deform = torch.compile(SHSResDeformNet().to(device))
         
         dummy_x = torch.randn(137800, 108, device=device)
         dummy_skip = torch.randn(137800, 36, device=device)
